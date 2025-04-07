@@ -1,4 +1,6 @@
+import random
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 def wczytaj_zadania(plik="zadania.txt"):
     zadania = []
@@ -31,8 +33,19 @@ def oblicz_cmax(sekwencja, zadania):
     return cmax
 
 
-# Funkcja realizująca algorytm Tabu Search
-def tabu_search(zadania, max_iter=100, tabu_tenure=5):
+# Funkcja generująca wszystkie sąsiedztwa
+def generuj_sasiadów(sekwencja):
+    n = len(sekwencja)
+    sąsiedzi = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            sasiad = sekwencja[:]
+            sasiad[i], sasiad[j] = sasiad[j], sasiad[i]  # zamiana miejscami dwóch zadań
+            sąsiedzi.append(sasiad)
+    return sąsiedzi
+
+# Funkcja realizująca algorytm Tabu Search z równoległym przetwarzaniem
+def tabu_search(zadania, max_iter=1000, tabu_tenure=5, max_no_improvement=50):
     # Rozwiązanie początkowe: zadania posortowane rosnąco po czasie dostępności R
     aktualna_sekwencja = sorted(zadania.keys(), key=lambda x: zadania[x]["R"])
     aktualna_wartosc = oblicz_cmax(aktualna_sekwencja, zadania)
@@ -43,31 +56,37 @@ def tabu_search(zadania, max_iter=100, tabu_tenure=5):
     lista_tabu = deque()
     zbior_tabu = set()
     
+    no_improvement = 0  # Licznik iteracji bez poprawy
+    
     # Główna pętla iteracyjna Tabu Search
     for it in range(max_iter):
         najlepszy_sasiad = None
         najlepszy_sasiad_wart = float("inf")
         najlepszy_ruch = None
         
-        # Generowanie wszystkich możliwych sąsiadów przez zamianę dwóch zadań
-        n = len(aktualna_sekwencja)
-        for i in range(n):
-            for j in range(i+1, n):
-                # Tworzymy nową sekwencję poprzez zamianę zadań na pozycjach i oraz j
-                sasiad = aktualna_sekwencja[:]
-                sasiad[i], sasiad[j] = sasiad[j], sasiad[i]
-                wartosc = oblicz_cmax(sasiad, zadania)
-                # Definiujemy ruch jako parę zamienionych zadań (uporządkowaną rosnąco)
-                ruch = tuple(sorted((aktualna_sekwencja[i], aktualna_sekwencja[j])))
-                
-                # Sprawdzamy warunek tabu: jeśli ruch jest zabroniony i nie poprawia najlepszego wyniku, pomijamy go
-                if ruch in zbior_tabu and wartosc >= najlepsza_wartosc:
-                    continue  # ruch tabu (brak aspiracji)
-                # Jeśli ruch nie jest tabu *lub* jest aspiracyjny (daje lepszy wynik niż dotychczasowy najlepszy)
-                if wartosc < najlepszy_sasiad_wart:
-                    najlepszy_sasiad_wart = wartosc
-                    najlepszy_sasiad = sasiad
-                    najlepszy_ruch = ruch
+        # Generowanie wszystkich możliwych sąsiadów równolegle
+        with ThreadPoolExecutor() as executor:
+            # Tworzymy wszystkie sąsiedztwa
+            sąsiedzi = generuj_sasiadów(aktualna_sekwencja)
+            wyniki = list(executor.map(lambda s: oblicz_cmax(s, zadania), sąsiedzi))
+        
+        for idx, wartosc in enumerate(wyniki):
+            sasiad = sąsiedzi[idx]
+            
+            # Użyjemy tylko poprawnego generowania ruchów przez zamianę dwóch zadań
+            for i in range(len(sasiad)):
+                for j in range(i + 1, len(sasiad)):
+                    # Zamiana miejscami dwóch elementów w sekwencji
+                    ruch = tuple(sorted((sasiad[i], sasiad[j])))
+
+                    # Sprawdzamy warunek tabu: jeśli ruch jest zabroniony i nie poprawia najlepszego wyniku, pomijamy go
+                    if ruch in zbior_tabu and wartosc >= najlepsza_wartosc:
+                        continue  # ruch tabu (brak aspiracji)
+                    # Jeśli ruch nie jest tabu *lub* jest aspiracyjny (daje lepszy wynik niż dotychczasowy najlepszy)
+                    if wartosc < najlepszy_sasiad_wart:
+                        najlepszy_sasiad_wart = wartosc
+                        najlepszy_sasiad = sasiad
+                        najlepszy_ruch = ruch
         
         # Jeśli nie znaleziono żadnego sąsiada (może się zdarzyć przy zbyt restrykcyjnej liście tabu) – przerwij
         if najlepszy_sasiad is None:
@@ -88,12 +107,20 @@ def tabu_search(zadania, max_iter=100, tabu_tenure=5):
         if aktualna_wartosc < najlepsza_wartosc:
             najlepsza_wartosc = aktualna_wartosc
             najlepsza_sekwencja = aktualna_sekwencja[:]
-    
+            no_improvement = 0  # Resetujemy licznik, gdy poprawa została znaleziona
+        else:
+            no_improvement += 1
+
+        # Jeśli przez 50 iteracji nie znaleziono żadnej poprawy, przechodzimy do następnego rozwiązania
+        if no_improvement >= max_no_improvement:
+            print(f"Brak poprawy przez {max_no_improvement} iteracji. Zatrzymywanie algorytmu.")
+            break
+
     # Zwróć najlepsze znalezione rozwiązanie oraz jego Cmax
     return najlepsza_sekwencja, najlepsza_wartosc
 
 # Uruchomienie algorytmu dla przykładowych danych
 pocz_sekw = sorted(tasks_map.keys(), key=lambda x: tasks_map[x]["R"])
 print("Rozwiazanie poczatkowe:", pocz_sekw, "Cmax =", oblicz_cmax(pocz_sekw, tasks_map))
-najlepsza_sekw, najlepszy_wynik = tabu_search(tasks_map, max_iter=50, tabu_tenure=3)
+najlepsza_sekw, najlepszy_wynik = tabu_search(tasks_map, max_iter=1000, tabu_tenure=10, max_no_improvement=50)
 print("Najlepsza znaleziona sekwencja:", najlepsza_sekw, "Cmax =", najlepszy_wynik)
