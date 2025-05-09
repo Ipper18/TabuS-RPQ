@@ -9,5 +9,5 @@ def generuj_zadania(n, R_max=10, P_max=10, Q_max=10, plik="zadania.txt"):
             f.write(f"{i} {R} {P} {Q}\n")
     print(f"Wygenerowano {n} zadan i zapisano do pliku '{plik}'.")
 
-# Przykład użycia:
-generuj_zadania(20)  # generuje 10 zadań
+
+generuj_zadania(160)  # generuje x zadań
