@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Tabu Search 1|rj,qj|Cmax
- • Wykres 1 – ewolucja globalnego Cmax (najlepszy dotąd).
- • Wykres 2 – Cmax aktualnego rozwiązania w każdej iteracji.
- • Dodatkowy wykres porównawczy heurystyk R↑, (R+Q)↑, Q↓, NEHRPQ.
-Autor: ChatGPT (o3), 2025
-"""
-
 import matplotlib.pyplot as plt
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
